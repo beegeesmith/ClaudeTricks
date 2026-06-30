@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLOSING_TIME_WORKSPACE=\"$HOME/code\" CLOSING_TIME_VAULT_DIR=\"$HOME/ObsidianVault/Projects\" $HOME/.claude/hooks/closing-time.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

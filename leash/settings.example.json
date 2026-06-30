@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_ALLOWED_SUBAGENTS='explorer,researcher,builder,reviewer' $HOME/.claude/hooks/leash.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
