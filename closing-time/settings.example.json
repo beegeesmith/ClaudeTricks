@@ -1,5 +1,26 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/reset-markers.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLOSING_TIME_WORKSPACE=\"$HOME/code\" $HOME/.claude/hooks/mark-work.py"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
