@@ -43,7 +43,10 @@ blocks on them (blocking on *any* dirty repo would lock you out over work that h
 to do with the current session). Two small companion hooks close that gap:
 
 - **`mark-work.py`** (`PostToolUse` on `Edit`/`Write`/`NotebookEdit`) — records, as edits
-  land, that real work happened this session and which repo it landed in.
+  land, that real work happened this session and which repo it landed in. State is kept
+  **per session** (`~/.claude/closing-time-markers/<session_id>.*`), so two concurrent
+  sessions never cross-block each other's stops or wipe each other's state — session A's
+  in-flight WIP stays a soft nudge for session B, a hard block only for A itself.
 - **`reset-markers.sh`** (`SessionStart`) — clears that state fresh at the start of every
   session, so it never leaks from one session into the next. It also polices the escape
   hatch: an armed `.skip-closing-time` is announced loudly (with its age) at session start,

@@ -4,10 +4,12 @@
 #
 # Does two jobs at the start of every session:
 #
-# 1. Clears the per-session markers written by mark-work.py
-#    (.closing-time-did-work, .closing-time-touched-repos) so a fresh session
-#    never inherits "did work" / "touched repo" state left over from a previous
-#    one. The unpushed-commits loop-cap counter (.closing-time-block-count) is
+# 1. Clears THIS session's work-markers written by mark-work.py
+#    (~/.claude/closing-time-markers/<session_id>.did-work / .touched-repos)
+#    so a fresh start (or /clear) never inherits "did work" / "touched repo"
+#    state — while leaving other live sessions' markers alone. Marker files
+#    older than 7 days are garbage-collected (dead sessions). The
+#    unpushed-commits loop-cap counter (.closing-time-block-count) is
 #    intentionally NOT cleared here — that tracks consecutive hard-block
 #    failures within a single stuck session, not per-session state, and
 #    closing-time.sh already clears it itself once the underlying condition
@@ -41,7 +43,24 @@
 #   }
 set -u
 
-rm -f "$HOME/.claude/.closing-time-did-work" "$HOME/.claude/.closing-time-touched-repos"
+# Markers are PER-SESSION files under ~/.claude/closing-time-markers/<sid>.*
+# (shared globals cross-wiped concurrent sessions — see mark-work.py). Reset
+# only THIS session's markers; GC files older than 7 days (dead sessions),
+# including any stale legacy global files.
+MARKERS_DIR="${CLOSING_TIME_MARKERS_DIR:-$HOME/.claude/closing-time-markers}"
+SID="${CLOSING_TIME_SESSION_ID:-$(python3 -c '
+import json, re, sys
+try:
+    sid = json.load(sys.stdin).get("session_id") or ""
+except Exception:
+    sid = ""
+print(sid if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", sid) else "")
+' 2>/dev/null || true)}"
+if [ -n "$SID" ]; then
+  rm -f "$MARKERS_DIR/$SID.did-work" "$MARKERS_DIR/$SID.touched-repos"
+fi
+[ -d "$MARKERS_DIR" ] && find "$MARKERS_DIR" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null
+find "$HOME/.claude" -maxdepth 1 \( -name .closing-time-did-work -o -name .closing-time-touched-repos \) -mtime +7 -delete 2>/dev/null
 
 SKIP_FILE="${CLOSING_TIME_SKIP_FILE:-$HOME/.claude/.skip-closing-time}"
 BYPASS_LOG="${CLOSING_TIME_BYPASS_LOG:-$HOME/.claude/closing-time-bypass.log}"

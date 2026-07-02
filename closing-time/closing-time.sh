@@ -47,6 +47,11 @@
 #                            (default: $HOME/.claude/.skip-closing-time)
 #   CLOSING_TIME_BYPASS_LOG  the bypass ledger
 #                            (default: $HOME/.claude/closing-time-bypass.log)
+#   CLOSING_TIME_MARKERS_DIR per-session work-marker directory (default:
+#                            $HOME/.claude/closing-time-markers; set the same
+#                            value for mark-work.py and reset-markers.sh)
+#   CLOSING_TIME_SESSION_ID  session-id override (default: parsed from the
+#                            hook's stdin JSON envelope; mainly for testing)
 #
 # It auto-discovers every git repo under the workspace — no repo list to maintain.
 #
@@ -63,8 +68,32 @@ set -u
 WORKSPACE="${CLOSING_TIME_WORKSPACE:-$HOME/code}"
 VAULT_LOG_DIR="${CLOSING_TIME_VAULT_DIR:-}"
 COUNTER="${CLOSING_TIME_COUNTER:-$HOME/.claude/.closing-time-block-count}"
-DID_WORK_FILE="${CLOSING_TIME_DID_WORK:-$HOME/.claude/.closing-time-did-work}"
-TOUCHED_REPOS_FILE="${CLOSING_TIME_TOUCHED_REPOS:-$HOME/.claude/.closing-time-touched-repos}"
+
+# --- session identity: work-markers are PER-SESSION ---
+# They used to be two global files shared by every concurrent session, which
+# cross-blocked (session A's stop hard-blocked on session B's in-flight WIP)
+# and cross-wiped (a new session's SessionStart erased open sessions' state).
+# The Stop hook's stdin JSON envelope carries session_id; parse it defensively —
+# on any failure fall back to the legacy global files rather than breaking.
+# Override with CLOSING_TIME_SESSION_ID (stdin is only read when it's unset).
+SID="${CLOSING_TIME_SESSION_ID:-$(python3 -c '
+import json, re, sys
+try:
+    sid = json.load(sys.stdin).get("session_id") or ""
+except Exception:
+    sid = ""
+print(sid if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", sid) else "")
+' 2>/dev/null || true)}"
+MARKERS_DIR="${CLOSING_TIME_MARKERS_DIR:-$HOME/.claude/closing-time-markers}"
+if [ -n "$SID" ]; then
+  DID_WORK_DEFAULT="$MARKERS_DIR/$SID.did-work"
+  TOUCHED_DEFAULT="$MARKERS_DIR/$SID.touched-repos"
+else
+  DID_WORK_DEFAULT="$HOME/.claude/.closing-time-did-work"
+  TOUCHED_DEFAULT="$HOME/.claude/.closing-time-touched-repos"
+fi
+DID_WORK_FILE="${CLOSING_TIME_DID_WORK:-$DID_WORK_DEFAULT}"
+TOUCHED_REPOS_FILE="${CLOSING_TIME_TOUCHED_REPOS:-$TOUCHED_DEFAULT}"
 
 touched_repos=()
 if [ -f "$TOUCHED_REPOS_FILE" ]; then
