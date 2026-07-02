@@ -29,9 +29,12 @@
 #   SOFT NUDGE on uncommitted changes in a repo NOT touched this session.
 #   SILENT PASS otherwise.
 #
-# Safety valves (a hook should never trap you):
+# Safety valves (a hook should never trap you — but a bypass must be LOUD, not silent):
 #   - scoped: only acts when the session's working dir is inside the workspace.
 #   - escape hatch: `touch ~/.claude/.skip-closing-time` or export CLOSING_TIME_SKIP=1.
+#     Every use is appended to a bypass ledger (~/.claude/closing-time-bypass.log), and
+#     reset-markers.sh announces an armed skip-file at every session start and deletes
+#     it once it's older than 24h — a disaster hatch, not a standing off-switch.
 #   - loop cap: after 3 consecutive hard blocks (any reason above), downgrades to advisory.
 #
 # Configure (all optional; sane defaults):
@@ -39,7 +42,11 @@
 #   CLOSING_TIME_VAULT_DIR   dir where you keep dated session-log notes — e.g. a folder in
 #                            an Obsidian vault. Leave unset to skip the note check entirely
 #                            (no soft nudge, no hard block for a missing note).
-#   CLOSING_TIME_SKIP=1      bypass entirely
+#   CLOSING_TIME_SKIP=1      bypass entirely (logged to the bypass ledger)
+#   CLOSING_TIME_SKIP_FILE   the escape-hatch touch-file
+#                            (default: $HOME/.claude/.skip-closing-time)
+#   CLOSING_TIME_BYPASS_LOG  the bypass ledger
+#                            (default: $HOME/.claude/closing-time-bypass.log)
 #
 # It auto-discovers every git repo under the workspace — no repo list to maintain.
 #
@@ -73,9 +80,22 @@ is_touched() {
   return 1
 }
 
-# --- escape hatch ---
-[ -n "${CLOSING_TIME_SKIP:-}" ] && exit 0
-[ -f "$HOME/.claude/.skip-closing-time" ] && exit 0
+# --- escape hatch (every consumption is written to the bypass ledger — a used
+# bypass must leave a trace, not just an effect; reset-markers.sh announces an
+# armed skip-file at session start and expires it after 24h) ---
+SKIP_FILE="${CLOSING_TIME_SKIP_FILE:-$HOME/.claude/.skip-closing-time}"
+BYPASS_LOG="${CLOSING_TIME_BYPASS_LOG:-$HOME/.claude/closing-time-bypass.log}"
+ledger() { # ledger <event> <file> <mtime-epoch|->
+  printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" "$2" "$3" >> "$BYPASS_LOG"
+}
+if [ -n "${CLOSING_TIME_SKIP:-}" ]; then
+  ledger "used-env" "CLOSING_TIME_SKIP" "-"
+  exit 0
+fi
+if [ -f "$SKIP_FILE" ]; then
+  ledger "used-skip" "$SKIP_FILE" "$(stat -f %m "$SKIP_FILE" 2>/dev/null || stat -c %Y "$SKIP_FILE" 2>/dev/null || echo -)"
+  exit 0
+fi
 
 # --- scope: only inside the workspace ---
 case "$PWD" in
@@ -158,7 +178,7 @@ if [ -n "$unpushed" ] || [ -n "$hard_dirty" ] || [ "$missing_vault_log" -eq 1 ];
       echo "  1. Update your issue tracker with current state + evidence."
       echo "  2. Write a short session-log note for today (so resuming is cheap)."
       echo "  3. Commit + push every repo."
-      echo "Then stopping is safe. (Escape hatch: touch ~/.claude/.skip-closing-time)"
+      echo "Then stopping is safe. (Escape hatch — logged + self-expiring: touch $SKIP_FILE)"
     } >&2
     exit 2
   fi

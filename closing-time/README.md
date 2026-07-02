@@ -45,7 +45,9 @@ to do with the current session). Two small companion hooks close that gap:
 - **`mark-work.py`** (`PostToolUse` on `Edit`/`Write`/`NotebookEdit`) — records, as edits
   land, that real work happened this session and which repo it landed in.
 - **`reset-markers.sh`** (`SessionStart`) — clears that state fresh at the start of every
-  session, so it never leaks from one session into the next.
+  session, so it never leaks from one session into the next. It also polices the escape
+  hatch: an armed `.skip-closing-time` is announced loudly (with its age) at session start,
+  and auto-deleted once it's older than 24h — see "Safety valves" below.
 
 Install both (see below) for the hardened behavior above. Without them, `closing-time.sh`
 still works — it just falls back to the original behavior: unpushed commits hard-block,
@@ -59,12 +61,26 @@ the session-log digest is written by the session that already holds the context 
 write, not the expensive re-derivation it prevents). Net: it spends a few seconds of shell
 to save the next session a giant re-read.
 
-## Safety valves (a hook should never trap you)
+## Safety valves (a hook should never trap you — but a bypass should never be silent)
 
 - **Scoped** — only acts when your working dir is inside the configured workspace.
 - **Escape hatch** — `touch ~/.claude/.skip-closing-time` or `export CLOSING_TIME_SKIP=1`.
 - **Loop cap** — after 3 consecutive blocks it downgrades to advisory, so a genuinely
   failing push can never lock you out.
+
+The escape hatch is a disaster valve for a stuck loop, not an off-switch — an armed
+skip-file left lying around silently disables the whole gate for every later session.
+So it's made **loud and self-expiring**:
+
+- Every bypass use (skip-file or `CLOSING_TIME_SKIP`) is appended to a small ledger,
+  `~/.claude/closing-time-bypass.log` (timestamp, event, file, file-mtime), so you can
+  always answer "how long was the gate off, and how often was that used?".
+- `reset-markers.sh` announces an armed skip-file at every session start, with its age —
+  in the assistant's own context, so the session that should delete it actually sees it.
+- A skip-file **older than 24h is deleted automatically** at session start, with a notice.
+
+Override the locations with `CLOSING_TIME_SKIP_FILE` / `CLOSING_TIME_BYPASS_LOG` (set them
+identically for both hooks if you do).
 
 ## Install
 
